@@ -11,8 +11,8 @@ import (
 
 func TestRadix(t *testing.T) {
 	var min, max string
-	inp := make(map[string]interface{})
-	for i := 0; i < 1000; i++ {
+	inp := make(map[string]any)
+	for i := range 1000 {
 		gen := generateUUID()
 		inp[gen] = i
 		if gen < min || i == 0 {
@@ -28,7 +28,7 @@ func TestRadix(t *testing.T) {
 		t.Fatalf("bad length: %v %v", r.Len(), len(inp))
 	}
 
-	r.Walk(func(k string, v interface{}) bool {
+	r.Walk(func(k string, v any) bool {
 		println(k)
 		return false
 	})
@@ -133,7 +133,7 @@ func TestDeletePrefix(t *testing.T) {
 		}
 
 		out := []string{}
-		fn := func(s string, v interface{}) bool {
+		fn := func(s string, v any) bool {
 			out = append(out, s)
 			return false
 		}
@@ -259,7 +259,7 @@ func TestWalkPrefix(t *testing.T) {
 
 	for _, test := range cases {
 		out := []string{}
-		fn := func(s string, v interface{}) bool {
+		fn := func(s string, v any) bool {
 			out = append(out, s)
 			return false
 		}
@@ -331,7 +331,7 @@ func TestWalkPath(t *testing.T) {
 
 	for _, test := range cases {
 		out := []string{}
-		fn := func(s string, v interface{}) bool {
+		fn := func(s string, v any) bool {
 			out = append(out, s)
 			return false
 		}
@@ -356,7 +356,7 @@ func TestWalkDelete(t *testing.T) {
 	r.Insert("init1/3", nil)
 	r.Insert("init2", nil)
 
-	deleteFn := func(s string, v interface{}) bool {
+	deleteFn := func(s string, v any) bool {
 		r.Delete(s)
 		return false
 	}
@@ -395,11 +395,11 @@ func generateUUID() string {
 
 func BenchmarkInsert(b *testing.B) {
 	r := New()
-	for i := 0; i < 10000; i++ {
+	for i := range 10000 {
 		r.Insert(fmt.Sprintf("init%d", i), true)
 	}
-	b.ResetTimer()
-	for n := 0; n < b.N; n++ {
+
+	for n := 0; b.Loop(); n++ {
 		_, updated := r.Insert(strconv.Itoa(n), true)
 		if updated {
 			b.Fatal("bad")
