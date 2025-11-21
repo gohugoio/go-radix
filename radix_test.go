@@ -29,7 +29,6 @@ func TestRadix(t *testing.T) {
 	}
 
 	r.Walk(func(k string, v any) bool {
-		println(k)
 		return false
 	})
 
@@ -88,7 +87,6 @@ func TestRoot(t *testing.T) {
 }
 
 func TestDelete(t *testing.T) {
-
 	r := New()
 
 	s := []string{"", "A", "AB"}
@@ -405,4 +403,72 @@ func BenchmarkInsert(b *testing.B) {
 			b.Fatal("bad")
 		}
 	}
+}
+
+func BenchmarkRadix(b *testing.B) {
+	r := New()
+
+	type v struct {
+		s string
+	}
+	for i := range 100 {
+		for j := range 100 {
+			r.Insert(fmt.Sprintf("init%d/%d", i, j), &v{s: "hello"})
+		}
+	}
+
+	b.ResetTimer()
+
+	b.Run("Walk", func(b *testing.B) {
+		for b.Loop() {
+			r.Walk(func(s string, v any) bool {
+				return false
+			})
+		}
+	})
+
+	b.Run("WalkPrefix", func(b *testing.B) {
+		for b.Loop() {
+			r.WalkPrefix("init50", func(s string, v any) bool {
+				return false
+			})
+		}
+	})
+
+	b.Run("WalkPath", func(b *testing.B) {
+		for b.Loop() {
+			r.WalkPath("init50/50", func(s string, v any) bool {
+				return false
+			})
+		}
+	})
+
+	b.Run("Walk", func(b *testing.B) {
+		for b.Loop() {
+			r.Walk(func(s string, v any) bool {
+				return false
+			})
+		}
+	})
+
+	b.Run("Get", func(b *testing.B) {
+		for b.Loop() {
+			v, ok := r.Get("init50/50")
+			_ = v
+			if !ok {
+				b.Fatal("bad")
+			}
+		}
+	})
+
+	b.Run("LongestPrefix", func(b *testing.B) {
+		for b.Loop() {
+			s, v, ok := r.LongestPrefix("init50/50")
+			_ = s
+			_ = v
+			if !ok {
+				b.Fatal("bad")
+			}
+		}
+	})
 }
