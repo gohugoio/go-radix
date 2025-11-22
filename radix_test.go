@@ -28,8 +28,8 @@ func TestRadix(t *testing.T) {
 	r := NewFromMap(inp)
 	c.Assert(r.Len(), qt.Equals, len(inp))
 
-	r.Walk(func(k string, v int) bool {
-		return false
+	r.Walk(func(k string, v int) (WalkFlag, int) {
+		return WalkContinue, v
 	})
 
 	for k, v := range inp {
@@ -65,6 +65,45 @@ func TestRoot(t *testing.T) {
 	val, ok = r.Delete("")
 	c.Assert(ok, qt.IsTrue)
 	c.Assert(val, qt.IsTrue)
+}
+
+func TestWalkSet(t *testing.T) {
+	c := qt.New(t)
+	r := New[int]()
+
+	for i := range 10 {
+		r.Insert(fmt.Sprintf("key%d", i), i)
+	}
+
+	r.Walk(func(s string, v int) (WalkFlag, int) {
+		k := fmt.Sprintf("key%d", v)
+		c.Assert(s, qt.Equals, k)
+		v2 := v
+		if v%2 == 0 {
+			v2 = v * 10
+		}
+		return WalkSet, v2
+	})
+
+	var ints []int
+	r.Walk(func(s string, v int) (WalkFlag, int) {
+		ints = append(ints, v)
+		return WalkContinue, 0
+	})
+
+	c.Assert(ints, qt.DeepEquals, []int{0, 1, 20, 3, 40, 5, 60, 7, 80, 9})
+}
+
+func TestWalkFlag(t *testing.T) {
+	c := qt.New(t)
+
+	f := WalkSet
+	c.Assert(f.shouldSet(), qt.IsTrue)
+	c.Assert(f.shouldStop(), qt.IsFalse)
+
+	f = WalkSet | WalkStop
+	c.Assert(f.shouldSet(), qt.IsTrue)
+	c.Assert(f.shouldStop(), qt.IsTrue)
 }
 
 func TestDelete(t *testing.T) {
@@ -110,9 +149,9 @@ func TestDeletePrefix(t *testing.T) {
 		c.Assert(deleted, qt.Equals, test.numDeleted)
 
 		out := []string{}
-		fn := func(s string, v bool) bool {
+		fn := func(s string, v bool) (WalkFlag, bool) {
 			out = append(out, s)
-			return false
+			return WalkContinue, false
 		}
 		r.Walk(fn)
 
@@ -133,7 +172,7 @@ func TestLongestPrefix(t *testing.T) {
 		"foozip",
 	}
 	for _, k := range keys {
-		r.Insert(k, nil)
+		r.Insert(k, "")
 	}
 	c.Assert(r.Len(), qt.Equals, len(keys))
 
@@ -167,7 +206,7 @@ func TestLongestPrefix(t *testing.T) {
 
 func TestWalkPrefix(t *testing.T) {
 	c := qt.New(t)
-	r := New[any]()
+	r := New[string]()
 
 	keys := []string{
 		"foobar",
@@ -177,7 +216,7 @@ func TestWalkPrefix(t *testing.T) {
 		"zipzap",
 	}
 	for _, k := range keys {
-		r.Insert(k, nil)
+		r.Insert(k, "")
 	}
 	c.Assert(r.Len(), qt.Equals, len(keys))
 
@@ -230,9 +269,9 @@ func TestWalkPrefix(t *testing.T) {
 
 	for _, test := range cases {
 		out := []string{}
-		fn := func(s string, v any) bool {
+		fn := func(s string, v string) (WalkFlag, string) {
 			out = append(out, s)
-			return false
+			return WalkContinue, ""
 		}
 		r.WalkPrefix(test.inp, fn)
 		sort.Strings(out)
@@ -243,7 +282,7 @@ func TestWalkPrefix(t *testing.T) {
 
 func TestWalkPath(t *testing.T) {
 	c := qt.New(t)
-	r := New[any]()
+	r := New[string]()
 
 	keys := []string{
 		"foo",
@@ -254,7 +293,7 @@ func TestWalkPath(t *testing.T) {
 		"zipzap",
 	}
 	for _, k := range keys {
-		r.Insert(k, nil)
+		r.Insert(k, "")
 	}
 	c.Assert(r.Len(), qt.Equals, len(keys))
 
@@ -299,9 +338,9 @@ func TestWalkPath(t *testing.T) {
 
 	for _, test := range cases {
 		out := []string{}
-		fn := func(s string, v any) bool {
+		fn := func(s string, v string) (WalkFlag, string) {
 			out = append(out, s)
-			return false
+			return WalkContinue, ""
 		}
 		r.WalkPath(test.inp, fn)
 		sort.Strings(out)
@@ -312,20 +351,20 @@ func TestWalkPath(t *testing.T) {
 
 func TestWalkDelete(t *testing.T) {
 	c := qt.New(t)
-	r := New[any]()
-	r.Insert("init0/0", nil)
-	r.Insert("init0/1", nil)
-	r.Insert("init0/2", nil)
-	r.Insert("init0/3", nil)
-	r.Insert("init1/0", nil)
-	r.Insert("init1/1", nil)
-	r.Insert("init1/2", nil)
-	r.Insert("init1/3", nil)
-	r.Insert("init2", nil)
+	r := New[string]()
+	r.Insert("init0/0", "")
+	r.Insert("init0/1", "")
+	r.Insert("init0/2", "")
+	r.Insert("init0/3", "")
+	r.Insert("init1/0", "")
+	r.Insert("init1/1", "")
+	r.Insert("init1/2", "")
+	r.Insert("init1/3", "")
+	r.Insert("init2", "")
 
-	deleteFn := func(s string, v any) bool {
+	deleteFn := func(s string, v string) (WalkFlag, string) {
 		r.Delete(s)
-		return false
+		return WalkContinue, ""
 	}
 
 	r.WalkPrefix("init1", deleteFn)
@@ -387,24 +426,24 @@ func BenchmarkRadix(b *testing.B) {
 
 	b.Run("Walk", func(b *testing.B) {
 		for b.Loop() {
-			r.Walk(func(s string, v *v) bool {
-				return false
+			r.Walk(func(s string, v *v) (WalkFlag, *v) {
+				return WalkContinue, nil
 			})
 		}
 	})
 
 	b.Run("WalkPrefix", func(b *testing.B) {
 		for b.Loop() {
-			r.WalkPrefix("init50", func(s string, v *v) bool {
-				return false
+			r.WalkPrefix("init50", func(s string, v *v) (WalkFlag, *v) {
+				return WalkContinue, nil
 			})
 		}
 	})
 
 	b.Run("WalkPath", func(b *testing.B) {
 		for b.Loop() {
-			r.WalkPath("init50/50", func(s string, v *v) bool {
-				return false
+			r.WalkPath("init50/50", func(s string, v *v) (WalkFlag, *v) {
+				return WalkContinue, nil
 			})
 		}
 	})
