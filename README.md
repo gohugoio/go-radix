@@ -3,8 +3,6 @@
 [![Go Report Card](https://goreportcard.com/badge/github.com/gohugoio/go-radix)](https://goreportcard.com/report/github.com/gohugoio/go-radix)
 [![Release](https://img.shields.io/github/release/gohugoio/go-radix.svg?style=flat-square)](https://github.com/gohugoio/go-radix/releases/latest)
 
-=========
-
 Provides the `radix` package that implements a [radix tree](http://en.wikipedia.org/wiki/Radix_tree).
 The package only provides a single `Tree` implementation, optimized for sparse nodes.
 
@@ -28,7 +26,7 @@ Below is a simple example of usage
 
 ```go
 // Create a tree
-r := radix.New()
+r := radix.New[int]()
 r.Insert("foo", 1)
 r.Insert("bar", 2)
 r.Insert("foobar", 2)
