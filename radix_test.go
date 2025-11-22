@@ -3,13 +3,15 @@ package radix
 import (
 	crand "crypto/rand"
 	"fmt"
-	"reflect"
 	"sort"
 	"strconv"
 	"testing"
+
+	qt "github.com/frankban/quicktest"
 )
 
 func TestRadix(t *testing.T) {
+	c := qt.New(t)
 	var min, max string
 	inp := make(map[string]int)
 	for i := range 1000 {
@@ -24,9 +26,7 @@ func TestRadix(t *testing.T) {
 	}
 
 	r := NewFromMap(inp)
-	if r.Len() != len(inp) {
-		t.Fatalf("bad length: %v %v", r.Len(), len(inp))
-	}
+	c.Assert(r.Len(), qt.Equals, len(inp))
 
 	r.Walk(func(k string, v int) bool {
 		return false
@@ -34,59 +34,41 @@ func TestRadix(t *testing.T) {
 
 	for k, v := range inp {
 		out, ok := r.Get(k)
-		if !ok {
-			t.Fatalf("missing key: %v", k)
-		}
-		if out != v {
-			t.Fatalf("value mis-match: %v %v", out, v)
-		}
+		c.Assert(ok, qt.IsTrue)
+		c.Assert(out, qt.Equals, v)
 	}
 
 	// Check min and max
 	outMin, _, _ := r.Minimum()
-	if outMin != min {
-		t.Fatalf("bad minimum: %v %v", outMin, min)
-	}
+	c.Assert(outMin, qt.Equals, min)
 	outMax, _, _ := r.Maximum()
-	if outMax != max {
-		t.Fatalf("bad maximum: %v %v", outMax, max)
-	}
+	c.Assert(outMax, qt.Equals, max)
 
 	for k, v := range inp {
 		out, ok := r.Delete(k)
-		if !ok {
-			t.Fatalf("missing key: %v", k)
-		}
-		if out != v {
-			t.Fatalf("value mis-match: %v %v", out, v)
-		}
+		c.Assert(ok, qt.IsTrue)
+		c.Assert(out, qt.Equals, v)
 	}
-	if r.Len() != 0 {
-		t.Fatalf("bad length: %v", r.Len())
-	}
+	c.Assert(r.Len(), qt.Equals, 0)
 }
 
 func TestRoot(t *testing.T) {
+	c := qt.New(t)
 	r := New[bool]()
 	_, ok := r.Delete("")
-	if ok {
-		t.Fatalf("bad")
-	}
+	c.Assert(ok, qt.IsFalse)
 	_, ok = r.Insert("", true)
-	if ok {
-		t.Fatalf("bad")
-	}
+	c.Assert(ok, qt.IsFalse)
 	val, ok := r.Get("")
-	if !ok || val != true {
-		t.Fatalf("bad: %v", val)
-	}
+	c.Assert(ok, qt.IsTrue)
+	c.Assert(val, qt.IsTrue)
 	val, ok = r.Delete("")
-	if !ok || val != true {
-		t.Fatalf("bad: %v", val)
-	}
+	c.Assert(ok, qt.IsTrue)
+	c.Assert(val, qt.IsTrue)
 }
 
 func TestDelete(t *testing.T) {
+	c := qt.New(t)
 	r := New[bool]()
 
 	s := []string{"", "A", "AB"}
@@ -97,13 +79,12 @@ func TestDelete(t *testing.T) {
 
 	for _, ss := range s {
 		_, ok := r.Delete(ss)
-		if !ok {
-			t.Fatalf("bad %q", ss)
-		}
+		c.Assert(ok, qt.IsTrue)
 	}
 }
 
 func TestDeletePrefix(t *testing.T) {
+	c := qt.New(t)
 	type exp struct {
 		inp        []string
 		prefix     string
@@ -126,9 +107,7 @@ func TestDeletePrefix(t *testing.T) {
 		}
 
 		deleted := r.DeletePrefix(test.prefix)
-		if deleted != test.numDeleted {
-			t.Fatalf("Bad delete, expected %v to be deleted but got %v", test.numDeleted, deleted)
-		}
+		c.Assert(deleted, qt.Equals, test.numDeleted)
 
 		out := []string{}
 		fn := func(s string, v bool) bool {
@@ -137,13 +116,12 @@ func TestDeletePrefix(t *testing.T) {
 		}
 		r.Walk(fn)
 
-		if !reflect.DeepEqual(out, test.out) {
-			t.Fatalf("mis-match: %v %v", out, test.out)
-		}
+		c.Assert(out, qt.DeepEquals, test.out)
 	}
 }
 
 func TestLongestPrefix(t *testing.T) {
+	c := qt.New(t)
 	r := New[any]()
 
 	keys := []string{
@@ -157,9 +135,7 @@ func TestLongestPrefix(t *testing.T) {
 	for _, k := range keys {
 		r.Insert(k, nil)
 	}
-	if r.Len() != len(keys) {
-		t.Fatalf("bad len: %v %v", r.Len(), len(keys))
-	}
+	c.Assert(r.Len(), qt.Equals, len(keys))
 
 	type exp struct {
 		inp string
@@ -182,16 +158,15 @@ func TestLongestPrefix(t *testing.T) {
 	}
 	for _, test := range cases {
 		m, _, ok := r.LongestPrefix(test.inp)
-		if !ok && test.out != "" {
-			t.Fatalf("no match: %v", test)
+		if test.out != "" {
+			c.Assert(ok, qt.IsTrue)
 		}
-		if m != test.out {
-			t.Fatalf("mis-match: %v %v", m, test)
-		}
+		c.Assert(m, qt.Equals, test.out)
 	}
 }
 
 func TestWalkPrefix(t *testing.T) {
+	c := qt.New(t)
 	r := New[any]()
 
 	keys := []string{
@@ -204,9 +179,7 @@ func TestWalkPrefix(t *testing.T) {
 	for _, k := range keys {
 		r.Insert(k, nil)
 	}
-	if r.Len() != len(keys) {
-		t.Fatalf("bad len: %v %v", r.Len(), len(keys))
-	}
+	c.Assert(r.Len(), qt.Equals, len(keys))
 
 	type exp struct {
 		inp string
@@ -264,13 +237,12 @@ func TestWalkPrefix(t *testing.T) {
 		r.WalkPrefix(test.inp, fn)
 		sort.Strings(out)
 		sort.Strings(test.out)
-		if !reflect.DeepEqual(out, test.out) {
-			t.Fatalf("mis-match: %v %v", out, test.out)
-		}
+		c.Assert(out, qt.DeepEquals, test.out)
 	}
 }
 
 func TestWalkPath(t *testing.T) {
+	c := qt.New(t)
 	r := New[any]()
 
 	keys := []string{
@@ -284,9 +256,7 @@ func TestWalkPath(t *testing.T) {
 	for _, k := range keys {
 		r.Insert(k, nil)
 	}
-	if r.Len() != len(keys) {
-		t.Fatalf("bad len: %v %v", r.Len(), len(keys))
-	}
+	c.Assert(r.Len(), qt.Equals, len(keys))
 
 	type exp struct {
 		inp string
@@ -336,13 +306,12 @@ func TestWalkPath(t *testing.T) {
 		r.WalkPath(test.inp, fn)
 		sort.Strings(out)
 		sort.Strings(test.out)
-		if !reflect.DeepEqual(out, test.out) {
-			t.Fatalf("mis-match: %v %v", out, test.out)
-		}
+		c.Assert(out, qt.DeepEquals, test.out)
 	}
 }
 
 func TestWalkDelete(t *testing.T) {
+	c := qt.New(t)
 	r := New[any]()
 	r.Insert("init0/0", nil)
 	r.Insert("init0/1", nil)
@@ -362,18 +331,13 @@ func TestWalkDelete(t *testing.T) {
 	r.WalkPrefix("init1", deleteFn)
 
 	for _, s := range []string{"init0/0", "init0/1", "init0/2", "init0/3", "init2"} {
-		if _, ok := r.Get(s); !ok {
-			t.Fatalf("expecting to still find %q", s)
-		}
+		_, ok := r.Get(s)
+		c.Assert(ok, qt.IsTrue)
 	}
-	if n := r.Len(); n != 5 {
-		t.Fatalf("expected to find exactly 5 nodes, instead found %d: %v", n, r.ToMap())
-	}
+	c.Assert(r.Len(), qt.Equals, 5)
 
 	r.Walk(deleteFn)
-	if n := r.Len(); n != 0 {
-		t.Fatalf("expected to find exactly 0 nodes, instead found %d: %v", n, r.ToMap())
-	}
+	c.Assert(r.Len(), qt.Equals, 0)
 }
 
 // generateUUID is used to generate a random UUID
@@ -392,6 +356,7 @@ func generateUUID() string {
 }
 
 func BenchmarkInsert(b *testing.B) {
+	c := qt.New(b)
 	r := New[bool]()
 	for i := range 10000 {
 		r.Insert(fmt.Sprintf("init%d", i), true)
@@ -401,13 +366,12 @@ func BenchmarkInsert(b *testing.B) {
 
 	for n := 0; b.Loop(); n++ {
 		_, updated := r.Insert(strconv.Itoa(n), true)
-		if updated {
-			b.Fatal("bad")
-		}
+		c.Assert(updated, qt.IsFalse)
 	}
 }
 
 func BenchmarkRadix(b *testing.B) {
+	c := qt.New(b)
 	type v struct {
 		s string
 	}
@@ -449,9 +413,7 @@ func BenchmarkRadix(b *testing.B) {
 		for b.Loop() {
 			v, ok := r.Get("init50/50")
 			_ = v
-			if !ok {
-				b.Fatal("bad")
-			}
+			c.Assert(ok, qt.IsTrue)
 		}
 	})
 
@@ -460,9 +422,7 @@ func BenchmarkRadix(b *testing.B) {
 			s, v, ok := r.LongestPrefix("init50/50")
 			_ = s
 			_ = v
-			if !ok {
-				b.Fatal("bad")
-			}
+			c.Assert(ok, qt.IsTrue)
 		}
 	})
 }
