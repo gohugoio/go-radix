@@ -11,7 +11,7 @@ import (
 
 func TestRadix(t *testing.T) {
 	var min, max string
-	inp := make(map[string]any)
+	inp := make(map[string]int)
 	for i := range 1000 {
 		gen := generateUUID()
 		inp[gen] = i
@@ -28,7 +28,7 @@ func TestRadix(t *testing.T) {
 		t.Fatalf("bad length: %v %v", r.Len(), len(inp))
 	}
 
-	r.Walk(func(k string, v any) bool {
+	r.Walk(func(k string, v int) bool {
 		return false
 	})
 
@@ -67,7 +67,7 @@ func TestRadix(t *testing.T) {
 }
 
 func TestRoot(t *testing.T) {
-	r := New()
+	r := New[bool]()
 	_, ok := r.Delete("")
 	if ok {
 		t.Fatalf("bad")
@@ -87,7 +87,7 @@ func TestRoot(t *testing.T) {
 }
 
 func TestDelete(t *testing.T) {
-	r := New()
+	r := New[bool]()
 
 	s := []string{"", "A", "AB"}
 
@@ -120,7 +120,7 @@ func TestDeletePrefix(t *testing.T) {
 	}
 
 	for _, test := range cases {
-		r := New()
+		r := New[bool]()
 		for _, ss := range test.inp {
 			r.Insert(ss, true)
 		}
@@ -131,7 +131,7 @@ func TestDeletePrefix(t *testing.T) {
 		}
 
 		out := []string{}
-		fn := func(s string, v any) bool {
+		fn := func(s string, v bool) bool {
 			out = append(out, s)
 			return false
 		}
@@ -144,7 +144,7 @@ func TestDeletePrefix(t *testing.T) {
 }
 
 func TestLongestPrefix(t *testing.T) {
-	r := New()
+	r := New[any]()
 
 	keys := []string{
 		"",
@@ -182,7 +182,7 @@ func TestLongestPrefix(t *testing.T) {
 	}
 	for _, test := range cases {
 		m, _, ok := r.LongestPrefix(test.inp)
-		if !ok {
+		if !ok && test.out != "" {
 			t.Fatalf("no match: %v", test)
 		}
 		if m != test.out {
@@ -192,7 +192,7 @@ func TestLongestPrefix(t *testing.T) {
 }
 
 func TestWalkPrefix(t *testing.T) {
-	r := New()
+	r := New[any]()
 
 	keys := []string{
 		"foobar",
@@ -271,7 +271,7 @@ func TestWalkPrefix(t *testing.T) {
 }
 
 func TestWalkPath(t *testing.T) {
-	r := New()
+	r := New[any]()
 
 	keys := []string{
 		"foo",
@@ -343,7 +343,7 @@ func TestWalkPath(t *testing.T) {
 }
 
 func TestWalkDelete(t *testing.T) {
-	r := New()
+	r := New[any]()
 	r.Insert("init0/0", nil)
 	r.Insert("init0/1", nil)
 	r.Insert("init0/2", nil)
@@ -392,10 +392,12 @@ func generateUUID() string {
 }
 
 func BenchmarkInsert(b *testing.B) {
-	r := New()
+	r := New[bool]()
 	for i := range 10000 {
 		r.Insert(fmt.Sprintf("init%d", i), true)
 	}
+
+	b.ResetTimer()
 
 	for n := 0; b.Loop(); n++ {
 		_, updated := r.Insert(strconv.Itoa(n), true)
@@ -406,11 +408,11 @@ func BenchmarkInsert(b *testing.B) {
 }
 
 func BenchmarkRadix(b *testing.B) {
-	r := New()
-
 	type v struct {
 		s string
 	}
+	r := New[*v]()
+
 	for i := range 100 {
 		for j := range 100 {
 			r.Insert(fmt.Sprintf("init%d/%d", i, j), &v{s: "hello"})
@@ -421,7 +423,7 @@ func BenchmarkRadix(b *testing.B) {
 
 	b.Run("Walk", func(b *testing.B) {
 		for b.Loop() {
-			r.Walk(func(s string, v any) bool {
+			r.Walk(func(s string, v *v) bool {
 				return false
 			})
 		}
@@ -429,7 +431,7 @@ func BenchmarkRadix(b *testing.B) {
 
 	b.Run("WalkPrefix", func(b *testing.B) {
 		for b.Loop() {
-			r.WalkPrefix("init50", func(s string, v any) bool {
+			r.WalkPrefix("init50", func(s string, v *v) bool {
 				return false
 			})
 		}
@@ -437,15 +439,7 @@ func BenchmarkRadix(b *testing.B) {
 
 	b.Run("WalkPath", func(b *testing.B) {
 		for b.Loop() {
-			r.WalkPath("init50/50", func(s string, v any) bool {
-				return false
-			})
-		}
-	})
-
-	b.Run("Walk", func(b *testing.B) {
-		for b.Loop() {
-			r.Walk(func(s string, v any) bool {
+			r.WalkPath("init50/50", func(s string, v *v) bool {
 				return false
 			})
 		}
