@@ -1,4 +1,8 @@
-go-radix [![Build Status](https://travis-ci.org/armon/go-radix.png)](https://travis-ci.org/armon/go-radix)
+[![Tests on Linux, MacOS and Windows](https://github.com/gohugoio/go-radix/workflows/Test/badge.svg)](https://github.com/gohugoio/go-radix/actions?query=workflow:Test)
+[![GoDoc](https://godoc.org/github.com/gohugoio/go-radix?status.svg)](https://godoc.org/github.com/gohugoio/go-radix)
+[![Go Report Card](https://goreportcard.com/badge/github.com/gohugoio/go-radix)](https://goreportcard.com/report/github.com/gohugoio/go-radix)
+[![Release](https://img.shields.io/github/release/gohugoio/go-radix.svg?style=flat-square)](https://github.com/gohugoio/go-radix/releases/latest)
+
 =========
 
 Provides the `radix` package that implements a [radix tree](http://en.wikipedia.org/wiki/Radix_tree).
