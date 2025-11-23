@@ -10,8 +10,9 @@ type WalkFlag uint32
 
 const (
 	WalkContinue WalkFlag = 0
-	WalkStop     WalkFlag = 1 << 0
-	WalkSet      WalkFlag = 1 << 1
+	WalkSkip     WalkFlag = 1 << 0
+	WalkStop     WalkFlag = 1 << 1
+	WalkSet      WalkFlag = 1 << 2
 )
 
 // ShouldStop returns true if the walk should terminate.
@@ -24,10 +25,31 @@ func (w WalkFlag) ShouldSet() bool {
 	return w&WalkSet != 0
 }
 
+// ShouldSkip returns true if the walk should skip this node.
+func (w WalkFlag) ShouldSkip() bool {
+	return w&WalkSkip != 0
+}
+
 // WalkFn is used when walking the tree. Takes a
 // key and value, returning a WalkFlag to indicate
 // how to proceed and possibly a new value to set.
 type WalkFn[T any] func(s string, v T) (WalkFlag, T)
+
+func (wf WalkFn[T]) Check(s string) WalkFlag {
+	return WalkContinue
+}
+
+func (wf WalkFn[T]) Handle(s string, v T) (WalkFlag, T) {
+	return wf(s, v)
+}
+
+// WalkHandler is the handler passed to Walk functions.
+// When split into two steps, this allows us to walk the
+// keys withut reading the values.
+type WalkHandler[T any] interface {
+	Check(s string) WalkFlag
+	Handle(s string, v T) (WalkFlag, T)
+}
 
 // leafNode is used to represent a value
 type leafNode[T any] struct {
@@ -332,11 +354,12 @@ func (t *Tree[T]) deletePrefix(parent, n *node[T], prefix string) int {
 	if len(prefix) == 0 {
 		// Remove the leaf node
 		subTreeSize := 0
-		// recursively walk from all edges of the node to be deleted
-		recursiveWalk(n, func(s string, v T) (WalkFlag, T) {
+		var fn WalkFn[T] = func(s string, v T) (WalkFlag, T) {
 			subTreeSize++
 			return WalkContinue, v
-		})
+		}
+		// recursively walk from all edges of the node to be deleted
+		recursiveWalk(n, fn)
 		if n.isLeaf() {
 			n.leaf = nil
 		}
@@ -477,18 +500,18 @@ func (t *Tree[T]) Maximum() (string, T, bool) {
 }
 
 // Walk is used to walk the tree
-func (t *Tree[T]) Walk(fn WalkFn[T]) {
-	recursiveWalk(t.root, fn)
+func (t *Tree[T]) Walk(h WalkHandler[T]) {
+	recursiveWalk(t.root, h)
 }
 
 // WalkPrefix is used to walk the tree under a prefix
-func (t *Tree[T]) WalkPrefix(prefix string, fn WalkFn[T]) {
+func (t *Tree[T]) WalkPrefix(prefix string, h WalkHandler[T]) {
 	n := t.root
 	search := prefix
 	for {
 		// Check for key exhaustion
 		if len(search) == 0 {
-			recursiveWalk(n, fn)
+			recursiveWalk(n, h)
 			return
 		}
 
@@ -505,7 +528,7 @@ func (t *Tree[T]) WalkPrefix(prefix string, fn WalkFn[T]) {
 		}
 		if strings.HasPrefix(n.prefix, search) {
 			// Child may be under our search prefix
-			recursiveWalk(n, fn)
+			recursiveWalk(n, h)
 		}
 		return
 	}
@@ -515,22 +538,28 @@ func (t *Tree[T]) WalkPrefix(prefix string, fn WalkFn[T]) {
 // from the root down to a given leaf. Where WalkPrefix walks
 // all the entries *under* the given prefix, this walks the
 // entries *above* the given prefix.
-func (t *Tree[T]) WalkPath(path string, fn WalkFn[T]) {
+func (t *Tree[T]) WalkPath(path string, h WalkHandler[T]) {
 	n := t.root
 	search := path
 	for {
 		// Visit the leaf values if any
 		if n.leaf != nil {
-			f, n2 := fn(n.leaf.key, n.leaf.val)
-			if f.ShouldSet() {
-				n.leaf.val = n2
-			}
+			f := h.Check(n.leaf.key)
 			if f.ShouldStop() {
 				return
 			}
+			if !f.ShouldSkip() {
+				f, n2 := h.Handle(n.leaf.key, n.leaf.val)
+				if f.ShouldSet() {
+					n.leaf.val = n2
+				}
+				if f.ShouldStop() {
+					return
+				}
+			}
 		}
 
-		// Check for key exhaution
+		// Check for key exhaustion
 		if len(search) == 0 {
 			return
 		}
@@ -552,15 +581,21 @@ func (t *Tree[T]) WalkPath(path string, fn WalkFn[T]) {
 
 // recursiveWalk is used to do a pre-order walk of a node
 // recursively. Returns true if the walk should be aborted
-func recursiveWalk[T any](n *node[T], fn WalkFn[T]) bool {
+func recursiveWalk[T any](n *node[T], h WalkHandler[T]) bool {
 	// Visit the leaf values if any
 	if n.leaf != nil {
-		f, n2 := fn(n.leaf.key, n.leaf.val)
-		if f.ShouldSet() {
-			n.leaf.val = n2
-		}
+		f := h.Check(n.leaf.key)
 		if f.ShouldStop() {
 			return true
+		}
+		if !f.ShouldSkip() {
+			f, n2 := h.Handle(n.leaf.key, n.leaf.val)
+			if f.ShouldSet() {
+				n.leaf.val = n2
+			}
+			if f.ShouldStop() {
+				return true
+			}
 		}
 	}
 
@@ -569,7 +604,7 @@ func recursiveWalk[T any](n *node[T], fn WalkFn[T]) bool {
 	k := len(n.edges) // keeps track of number of edges in previous iteration
 	for i < k {
 		e := n.edges[i]
-		if recursiveWalk(e.node, fn) {
+		if recursiveWalk(e.node, h) {
 			return true
 		}
 		// It is a possibility that the WalkFn modified the node we are
@@ -577,7 +612,7 @@ func recursiveWalk[T any](n *node[T], fn WalkFn[T]) bool {
 		// so the last edge became the current node n, on which we'll
 		// iterate one last time.
 		if len(n.edges) == 0 {
-			return recursiveWalk(n, fn)
+			return recursiveWalk(n, h)
 		}
 		// If there are now less edges than in the previous iteration,
 		// then do not increment the loop index, since the current index
@@ -594,9 +629,10 @@ func recursiveWalk[T any](n *node[T], fn WalkFn[T]) bool {
 func (t *Tree[T]) ToMap() map[string]T {
 	out := make(map[string]T, t.size)
 	var zero T
-	t.Walk(func(k string, v T) (WalkFlag, T) {
+	var fn WalkFn[T] = func(k string, v T) (WalkFlag, T) {
 		out[k] = v
 		return WalkContinue, zero
-	})
+	}
+	t.Walk(fn)
 	return out
 }

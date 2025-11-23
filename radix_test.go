@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
+	"sync"
 	"testing"
 
 	qt "github.com/frankban/quicktest"
@@ -28,9 +29,10 @@ func TestRadix(t *testing.T) {
 	r := NewFromMap(inp)
 	c.Assert(r.Len(), qt.Equals, len(inp))
 
-	r.Walk(func(k string, v int) (WalkFlag, int) {
+	var fn WalkFn[int] = func(s string, v int) (WalkFlag, int) {
 		return WalkContinue, v
-	})
+	}
+	r.Walk(fn)
 
 	for k, v := range inp {
 		out, ok := r.Get(k)
@@ -69,30 +71,135 @@ func TestRoot(t *testing.T) {
 
 func TestWalkSet(t *testing.T) {
 	c := qt.New(t)
+
+	newTree := func() *Tree[int] {
+		r := New[int]()
+
+		for i := range 10 {
+			r.Insert(fmt.Sprintf("key%d", i), i)
+		}
+		return r
+	}
+
+	collect := func(r *Tree[int]) []int {
+		var ints []int
+		var fn WalkFn[int] = func(s string, v int) (WalkFlag, int) {
+			ints = append(ints, v)
+			return WalkContinue, 0
+		}
+		r.Walk(fn)
+		return ints
+	}
+
+	c.Run("Basic", func(c *qt.C) {
+		var fn WalkFn[int] = func(s string, v int) (WalkFlag, int) {
+			k := fmt.Sprintf("key%d", v)
+			c.Assert(s, qt.Equals, k)
+			v2 := v
+			if v%2 == 0 {
+				v2 = v * 10
+				return WalkSet, v2
+			}
+			return WalkContinue, 0
+		}
+
+		r := newTree()
+		r.Walk(fn)
+
+		c.Assert(collect(r), qt.DeepEquals, []int{0, 1, 20, 3, 40, 5, 60, 7, 80, 9})
+	})
+
+	c.Run("Skip some ", func(c *qt.C) {
+		r := newTree()
+		h := testWalkHandler[int]{
+			check: func(s string) WalkFlag {
+				if s == "key4" || s == "key7" {
+					return WalkSkip
+				}
+				return WalkContinue
+			},
+			handle: func(s string, v int) (WalkFlag, int) {
+				return WalkSet, v * 10
+			},
+		}
+		r.Walk(h)
+
+		c.Assert(collect(r), qt.DeepEquals, []int{0, 10, 20, 30, 4, 50, 60, 7, 80, 90})
+	})
+
+	c.Run("Stop in check", func(c *qt.C) {
+		r := newTree()
+		h := testWalkHandler[int]{
+			check: func(s string) WalkFlag {
+				if s == "key4" {
+					return WalkStop
+				}
+				return WalkContinue
+			},
+			handle: func(s string, v int) (WalkFlag, int) {
+				return WalkSet, v * 10
+			},
+		}
+		r.Walk(h)
+
+		c.Assert(collect(r), qt.DeepEquals, []int{0, 10, 20, 30, 4, 5, 6, 7, 8, 9})
+	})
+
+	c.Run("Stop in handle", func(c *qt.C) {
+		r := newTree()
+		h := testWalkHandler[int]{
+			check: func(s string) WalkFlag {
+				return WalkContinue
+			},
+			handle: func(s string, v int) (WalkFlag, int) {
+				if s == "key4" {
+					return WalkStop, 0
+				}
+				return WalkSet, v * 10
+			},
+		}
+		r.Walk(h)
+
+		c.Assert(collect(r), qt.DeepEquals, []int{0, 10, 20, 30, 4, 5, 6, 7, 8, 9})
+	})
+}
+
+func TestWalkSetParallel(t *testing.T) {
+	c := qt.New(t)
+
 	r := New[int]()
 
-	for i := range 10 {
+	for i := range 1000 {
 		r.Insert(fmt.Sprintf("key%d", i), i)
 	}
 
-	r.Walk(func(s string, v int) (WalkFlag, int) {
-		k := fmt.Sprintf("key%d", v)
-		c.Assert(s, qt.Equals, k)
-		v2 := v
-		if v%2 == 0 {
-			v2 = v * 10
-			return WalkSet, v2
-		}
-		return WalkContinue, 0
-	})
+	var wg sync.WaitGroup
+
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func(j int) {
+			defer wg.Done()
+			if j == 2 {
+				var fn WalkFn[int] = func(s string, v int) (WalkFlag, int) {
+					return WalkSet, v * 3
+				}
+				r.Walk(fn)
+			} else {
+				r.Walk(testWalkHandler[int]{})
+			}
+		}(i)
+	}
+
+	wg.Wait()
 
 	var ints []int
-	r.Walk(func(s string, v int) (WalkFlag, int) {
+	var fn WalkFn[int] = func(s string, v int) (WalkFlag, int) {
 		ints = append(ints, v)
 		return WalkContinue, 0
-	})
+	}
+	r.Walk(fn)
 
-	c.Assert(ints, qt.DeepEquals, []int{0, 1, 20, 3, 40, 5, 60, 7, 80, 9})
+	c.Assert(ints[:5], qt.DeepEquals, []int{0, 3, 30, 300, 303})
 }
 
 func TestWalkFlag(t *testing.T) {
@@ -101,10 +208,14 @@ func TestWalkFlag(t *testing.T) {
 	f := WalkSet
 	c.Assert(f.ShouldSet(), qt.IsTrue)
 	c.Assert(f.ShouldStop(), qt.IsFalse)
+	c.Assert(f.ShouldSkip(), qt.IsFalse)
 
 	f = WalkSet | WalkStop
 	c.Assert(f.ShouldSet(), qt.IsTrue)
 	c.Assert(f.ShouldStop(), qt.IsTrue)
+
+	f = WalkSkip
+	c.Assert(f.ShouldSkip(), qt.IsTrue)
 }
 
 func TestDelete(t *testing.T) {
@@ -150,7 +261,7 @@ func TestDeletePrefix(t *testing.T) {
 		c.Assert(deleted, qt.Equals, test.numDeleted)
 
 		out := []string{}
-		fn := func(s string, v bool) (WalkFlag, bool) {
+		var fn WalkFn[bool] = func(s string, v bool) (WalkFlag, bool) {
 			out = append(out, s)
 			return WalkContinue, false
 		}
@@ -270,7 +381,7 @@ func TestWalkPrefix(t *testing.T) {
 
 	for _, test := range cases {
 		out := []string{}
-		fn := func(s string, v string) (WalkFlag, string) {
+		var fn WalkFn[string] = func(s string, v string) (WalkFlag, string) {
 			out = append(out, s)
 			return WalkContinue, ""
 		}
@@ -339,7 +450,7 @@ func TestWalkPath(t *testing.T) {
 
 	for _, test := range cases {
 		out := []string{}
-		fn := func(s string, v string) (WalkFlag, string) {
+		var fn WalkFn[string] = func(s string, v string) (WalkFlag, string) {
 			out = append(out, s)
 			return WalkContinue, ""
 		}
@@ -363,7 +474,7 @@ func TestWalkDelete(t *testing.T) {
 	r.Insert("init1/3", "")
 	r.Insert("init2", "")
 
-	deleteFn := func(s string, v string) (WalkFlag, string) {
+	var deleteFn WalkFn[string] = func(s string, v string) (WalkFlag, string) {
 		r.Delete(s)
 		return WalkContinue, ""
 	}
@@ -423,29 +534,41 @@ func BenchmarkRadix(b *testing.B) {
 		}
 	}
 
+	var fn WalkFn[*v] = func(s string, v *v) (WalkFlag, *v) {
+		return WalkContinue, nil
+	}
+
+	skipAll := testWalkHandler[*v]{}
+
 	b.ResetTimer()
 
 	b.Run("Walk", func(b *testing.B) {
 		for b.Loop() {
-			r.Walk(func(s string, v *v) (WalkFlag, *v) {
-				return WalkContinue, nil
-			})
+			r.Walk(fn)
+		}
+	})
+
+	b.Run("Walk keys", func(b *testing.B) {
+		for b.Loop() {
+			r.Walk(skipAll)
 		}
 	})
 
 	b.Run("WalkPrefix", func(b *testing.B) {
 		for b.Loop() {
-			r.WalkPrefix("init50", func(s string, v *v) (WalkFlag, *v) {
-				return WalkContinue, nil
-			})
+			r.WalkPrefix("init50", fn)
+		}
+	})
+
+	b.Run("WalkPrefix keys", func(b *testing.B) {
+		for b.Loop() {
+			r.WalkPrefix("init50", skipAll)
 		}
 	})
 
 	b.Run("WalkPath", func(b *testing.B) {
 		for b.Loop() {
-			r.WalkPath("init50/50", func(s string, v *v) (WalkFlag, *v) {
-				return WalkContinue, nil
-			})
+			r.WalkPath("init50/50", fn)
 		}
 	})
 
@@ -465,4 +588,24 @@ func BenchmarkRadix(b *testing.B) {
 			c.Assert(ok, qt.IsTrue)
 		}
 	})
+}
+
+type testWalkHandler[T any] struct {
+	check  func(s string) WalkFlag
+	handle func(s string, v T) (WalkFlag, T)
+}
+
+func (w testWalkHandler[T]) Check(s string) WalkFlag {
+	if w.check != nil {
+		return w.check(s)
+	}
+	return WalkSkip
+}
+
+func (w testWalkHandler[T]) Handle(s string, v T) (WalkFlag, T) {
+	if w.handle != nil {
+		return w.handle(s, v)
+	}
+	var zero T
+	return WalkContinue, zero
 }
