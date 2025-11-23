@@ -81,8 +81,9 @@ func TestWalkSet(t *testing.T) {
 		v2 := v
 		if v%2 == 0 {
 			v2 = v * 10
+			return WalkSet, v2
 		}
-		return WalkSet, v2
+		return WalkContinue, 0
 	})
 
 	var ints []int
@@ -98,12 +99,12 @@ func TestWalkFlag(t *testing.T) {
 	c := qt.New(t)
 
 	f := WalkSet
-	c.Assert(f.shouldSet(), qt.IsTrue)
-	c.Assert(f.shouldStop(), qt.IsFalse)
+	c.Assert(f.ShouldSet(), qt.IsTrue)
+	c.Assert(f.ShouldStop(), qt.IsFalse)
 
 	f = WalkSet | WalkStop
-	c.Assert(f.shouldSet(), qt.IsTrue)
-	c.Assert(f.shouldStop(), qt.IsTrue)
+	c.Assert(f.ShouldSet(), qt.IsTrue)
+	c.Assert(f.ShouldStop(), qt.IsTrue)
 }
 
 func TestDelete(t *testing.T) {
