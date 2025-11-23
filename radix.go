@@ -14,13 +14,13 @@ const (
 	WalkSet      WalkFlag = 1 << 1
 )
 
-// shouldStop returns true if the walk should terminate.
-func (w WalkFlag) shouldStop() bool {
+// ShouldStop returns true if the walk should terminate.
+func (w WalkFlag) ShouldStop() bool {
 	return w&WalkStop != 0
 }
 
-// shouldSet returns true if the walk function wants to set a new value.
-func (w WalkFlag) shouldSet() bool {
+// ShouldSet returns true if the walk function wants to set a new value.
+func (w WalkFlag) ShouldSet() bool {
 	return w&WalkSet != 0
 }
 
@@ -522,10 +522,10 @@ func (t *Tree[T]) WalkPath(path string, fn WalkFn[T]) {
 		// Visit the leaf values if any
 		if n.leaf != nil {
 			f, n2 := fn(n.leaf.key, n.leaf.val)
-			if f.shouldSet() {
+			if f.ShouldSet() {
 				n.leaf.val = n2
 			}
-			if f.shouldStop() {
+			if f.ShouldStop() {
 				return
 			}
 		}
@@ -556,10 +556,10 @@ func recursiveWalk[T any](n *node[T], fn WalkFn[T]) bool {
 	// Visit the leaf values if any
 	if n.leaf != nil {
 		f, n2 := fn(n.leaf.key, n.leaf.val)
-		if f.shouldSet() {
+		if f.ShouldSet() {
 			n.leaf.val = n2
 		}
-		if f.shouldStop() {
+		if f.ShouldStop() {
 			return true
 		}
 	}
