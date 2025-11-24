@@ -29,8 +29,8 @@ func TestRadix(t *testing.T) {
 	r := NewFromMap(inp)
 	c.Assert(r.Len(), qt.Equals, len(inp))
 
-	var fn WalkFn[int] = func(s string, v int) (WalkFlag, int) {
-		return WalkContinue, v
+	var fn WalkFn[int] = func(s string, v int) (WalkFlag, int, error) {
+		return WalkContinue, v, nil
 	}
 	r.Walk(fn)
 
@@ -83,24 +83,24 @@ func TestWalkSet(t *testing.T) {
 
 	collect := func(r *Tree[int]) []int {
 		var ints []int
-		var fn WalkFn[int] = func(s string, v int) (WalkFlag, int) {
+		var fn WalkFn[int] = func(s string, v int) (WalkFlag, int, error) {
 			ints = append(ints, v)
-			return WalkContinue, 0
+			return WalkContinue, 0, nil
 		}
 		r.Walk(fn)
 		return ints
 	}
 
 	c.Run("Basic", func(c *qt.C) {
-		var fn WalkFn[int] = func(s string, v int) (WalkFlag, int) {
+		var fn WalkFn[int] = func(s string, v int) (WalkFlag, int, error) {
 			k := fmt.Sprintf("key%d", v)
 			c.Assert(s, qt.Equals, k)
 			v2 := v
 			if v%2 == 0 {
 				v2 = v * 10
-				return WalkSet, v2
+				return WalkSet, v2, nil
 			}
-			return WalkContinue, 0
+			return WalkContinue, 0, nil
 		}
 
 		r := newTree()
@@ -112,14 +112,14 @@ func TestWalkSet(t *testing.T) {
 	c.Run("Skip some ", func(c *qt.C) {
 		r := newTree()
 		h := testWalkHandler[int]{
-			check: func(s string) WalkFlag {
+			check: func(s string) (WalkFlag, error) {
 				if s == "key4" || s == "key7" {
-					return WalkSkip
+					return WalkSkip, nil
 				}
-				return WalkContinue
+				return WalkContinue, nil
 			},
-			handle: func(s string, v int) (WalkFlag, int) {
-				return WalkSet, v * 10
+			handle: func(s string, v int) (WalkFlag, int, error) {
+				return WalkSet, v * 10, nil
 			},
 		}
 		r.Walk(h)
@@ -130,14 +130,14 @@ func TestWalkSet(t *testing.T) {
 	c.Run("Stop in check", func(c *qt.C) {
 		r := newTree()
 		h := testWalkHandler[int]{
-			check: func(s string) WalkFlag {
+			check: func(s string) (WalkFlag, error) {
 				if s == "key4" {
-					return WalkStop
+					return WalkStop, nil
 				}
-				return WalkContinue
+				return WalkContinue, nil
 			},
-			handle: func(s string, v int) (WalkFlag, int) {
-				return WalkSet, v * 10
+			handle: func(s string, v int) (WalkFlag, int, error) {
+				return WalkSet, v * 10, nil
 			},
 		}
 		r.Walk(h)
@@ -148,14 +148,14 @@ func TestWalkSet(t *testing.T) {
 	c.Run("Stop in handle", func(c *qt.C) {
 		r := newTree()
 		h := testWalkHandler[int]{
-			check: func(s string) WalkFlag {
-				return WalkContinue
+			check: func(s string) (WalkFlag, error) {
+				return WalkContinue, nil
 			},
-			handle: func(s string, v int) (WalkFlag, int) {
+			handle: func(s string, v int) (WalkFlag, int, error) {
 				if s == "key4" {
-					return WalkStop, 0
+					return WalkStop, 0, nil
 				}
-				return WalkSet, v * 10
+				return WalkSet, v * 10, nil
 			},
 		}
 		r.Walk(h)
@@ -180,8 +180,8 @@ func TestWalkSetParallel(t *testing.T) {
 		go func(j int) {
 			defer wg.Done()
 			if j == 2 {
-				var fn WalkFn[int] = func(s string, v int) (WalkFlag, int) {
-					return WalkSet, v * 3
+				var fn WalkFn[int] = func(s string, v int) (WalkFlag, int, error) {
+					return WalkSet, v * 3, nil
 				}
 				r.Walk(fn)
 			} else {
@@ -193,9 +193,9 @@ func TestWalkSetParallel(t *testing.T) {
 	wg.Wait()
 
 	var ints []int
-	var fn WalkFn[int] = func(s string, v int) (WalkFlag, int) {
+	var fn WalkFn[int] = func(s string, v int) (WalkFlag, int, error) {
 		ints = append(ints, v)
-		return WalkContinue, 0
+		return WalkContinue, 0, nil
 	}
 	r.Walk(fn)
 
@@ -261,9 +261,9 @@ func TestDeletePrefix(t *testing.T) {
 		c.Assert(deleted, qt.Equals, test.numDeleted)
 
 		out := []string{}
-		var fn WalkFn[bool] = func(s string, v bool) (WalkFlag, bool) {
+		var fn WalkFn[bool] = func(s string, v bool) (WalkFlag, bool, error) {
 			out = append(out, s)
-			return WalkContinue, false
+			return WalkContinue, false, nil
 		}
 		r.Walk(fn)
 
@@ -381,9 +381,9 @@ func TestWalkPrefix(t *testing.T) {
 
 	for _, test := range cases {
 		out := []string{}
-		var fn WalkFn[string] = func(s string, v string) (WalkFlag, string) {
+		var fn WalkFn[string] = func(s string, v string) (WalkFlag, string, error) {
 			out = append(out, s)
-			return WalkContinue, ""
+			return WalkContinue, "", nil
 		}
 		r.WalkPrefix(test.inp, fn)
 		sort.Strings(out)
@@ -450,9 +450,9 @@ func TestWalkPath(t *testing.T) {
 
 	for _, test := range cases {
 		out := []string{}
-		var fn WalkFn[string] = func(s string, v string) (WalkFlag, string) {
+		var fn WalkFn[string] = func(s string, v string) (WalkFlag, string, error) {
 			out = append(out, s)
-			return WalkContinue, ""
+			return WalkContinue, "", nil
 		}
 		r.WalkPath(test.inp, fn)
 		sort.Strings(out)
@@ -474,9 +474,9 @@ func TestWalkDelete(t *testing.T) {
 	r.Insert("init1/3", "")
 	r.Insert("init2", "")
 
-	var deleteFn WalkFn[string] = func(s string, v string) (WalkFlag, string) {
+	var deleteFn WalkFn[string] = func(s string, v string) (WalkFlag, string, error) {
 		r.Delete(s)
-		return WalkContinue, ""
+		return WalkContinue, "", nil
 	}
 
 	r.WalkPrefix("init1", deleteFn)
@@ -489,6 +489,39 @@ func TestWalkDelete(t *testing.T) {
 
 	r.Walk(deleteFn)
 	c.Assert(r.Len(), qt.Equals, 0)
+}
+
+func TestWalkErrors(t *testing.T) {
+	c := qt.New(t)
+
+	r := New[string]()
+	r.Insert("init0/0", "")
+	r.Insert("init0/1", "")
+	r.Insert("init0/2", "")
+
+	errWalk := fmt.Errorf("walk error")
+	var walkErrFn WalkFn[string] = func(s string, v string) (WalkFlag, string, error) {
+		return WalkContinue, "", errWalk
+	}
+
+	err := r.Walk(walkErrFn)
+	c.Assert(err, qt.Equals, errWalk)
+
+	errWalkPrefix := fmt.Errorf("walk prefix error")
+	var walkPrefixErrFn WalkFn[string] = func(s string, v string) (WalkFlag, string, error) {
+		return WalkContinue, "", errWalkPrefix
+	}
+
+	err = r.WalkPrefix("init0", walkPrefixErrFn)
+	c.Assert(err, qt.Equals, errWalkPrefix)
+
+	errWalkPath := fmt.Errorf("walk path error")
+	var walkPathErrFn WalkFn[string] = func(s string, v string) (WalkFlag, string, error) {
+		return WalkContinue, "", errWalkPath
+	}
+
+	err = r.WalkPath("init0/1", walkPathErrFn)
+	c.Assert(err, qt.Equals, errWalkPath)
 }
 
 // generateUUID is used to generate a random UUID
@@ -534,8 +567,8 @@ func BenchmarkRadix(b *testing.B) {
 		}
 	}
 
-	var fn WalkFn[*v] = func(s string, v *v) (WalkFlag, *v) {
-		return WalkContinue, nil
+	var fn WalkFn[*v] = func(s string, v *v) (WalkFlag, *v, error) {
+		return WalkContinue, nil, nil
 	}
 
 	skipAll := testWalkHandler[*v]{}
@@ -591,21 +624,21 @@ func BenchmarkRadix(b *testing.B) {
 }
 
 type testWalkHandler[T any] struct {
-	check  func(s string) WalkFlag
-	handle func(s string, v T) (WalkFlag, T)
+	check  func(s string) (WalkFlag, error)
+	handle func(s string, v T) (WalkFlag, T, error)
 }
 
-func (w testWalkHandler[T]) Check(s string) WalkFlag {
+func (w testWalkHandler[T]) Check(s string) (WalkFlag, error) {
 	if w.check != nil {
 		return w.check(s)
 	}
-	return WalkSkip
+	return WalkSkip, nil
 }
 
-func (w testWalkHandler[T]) Handle(s string, v T) (WalkFlag, T) {
+func (w testWalkHandler[T]) Handle(s string, v T) (WalkFlag, T, error) {
 	if w.handle != nil {
 		return w.handle(s, v)
 	}
 	var zero T
-	return WalkContinue, zero
+	return WalkContinue, zero, nil
 }
