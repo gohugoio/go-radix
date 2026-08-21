@@ -175,7 +175,7 @@ func TestWalkSetParallel(t *testing.T) {
 
 	var wg sync.WaitGroup
 
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		wg.Add(1)
 		go func(j int) {
 			defer wg.Done()
